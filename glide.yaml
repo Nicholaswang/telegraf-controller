@@ -1,0 +1,33 @@
+package: github.com/Nicholaswang/telegraf-controller
+import:
+- package: github.com/golang/glog
+- package: github.com/jcmoraisjr/haproxy-ingress
+  subpackages:
+  - pkg/types
+  - pkg/utils
+- package: github.com/mitchellh/mapstructure
+- package: github.com/spf13/pflag
+- package: k8s.io/api
+  subpackages:
+  - core/v1
+  - extensions/v1beta1
+- package: k8s.io/apimachinery
+  subpackages:
+  - pkg/api/meta
+  - pkg/apis/meta/v1
+  - pkg/labels
+  - pkg/runtime
+  - pkg/util/runtime
+  - pkg/util/wait
+  - pkg/watch
+- package: k8s.io/client-go
+  subpackages:
+  - kubernetes
+  - tools/cache
+  - util/workqueue
+- package: k8s.io/ingress
+  subpackages:
+  - core/pkg/file
+  - core/pkg/ingress
+  - core/pkg/ingress/defaults
+  - core/pkg/net/ssl
