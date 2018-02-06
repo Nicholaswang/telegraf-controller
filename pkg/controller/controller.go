@@ -21,7 +21,6 @@ import (
 	"strings"
 )
 
-// /AProxyController has internal data of a TelegrafController instance
 type TelegrafController struct {
 	command        string
 	reloadStrategy *string
@@ -29,17 +28,19 @@ type TelegrafController struct {
 	template       *template
 	currentConfig  *types.ControllerConfig
 	indexer        cache.Indexer
-	queue          workqueue.RateLimitingInterface
+	queueRunning   workqueue.RateLimitingInterface
+	queueNew       workqueue.RateLimitingInterface
 	informer       cache.Controller
 	clientset      kubernetes.Interface
 }
 
 // NewTelegrafController constructor
 func NewTelegrafController() *TelegrafController {
-	tc := &Monitor{
-		clientset: clientset,
-		Config:    config,
-		queue:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+	tc := &TelegrafController{
+		clientset:    clientset,
+		Config:       config,
+		queueRunning: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		queueNew:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
 	tc.createIndexerInformer()
@@ -57,12 +58,12 @@ func (tc *TelegrafController) getPod(key string) (*v1.Pod, bool, error) {
 }
 
 func (tc *TelegrafController) processNextItem() bool {
-	// Wait until there is a new item in the working queue
-	key, quit := tc.queue.Get()
+	// Wait until there is a new item in the working queueNew
+	key, quit := tc.queueNew.Get()
 	if quit {
 		return false
 	}
-	defer tc.queue.Done(key)
+	defer tc.queueNew.Done(key)
 
 	err := tc.sync(key.(string))
 	tc.handleErr(err, key)
@@ -91,27 +92,33 @@ func (tc *TelegrafController) sync(key string) error {
 	return nil
 }
 
+func (tc *TelegrafController) syncPod(pod *v1.Pod) error {
+	// TODO: deal with deleted pod
+
+	return nil
+}
+
 // handleErr checks if an error happened and makes sure we will retry later.
 func (tc *TelegrafController) handleErr(err error, key interface{}) {
 	if err == nil {
-		tc.queue.Forget(key)
+		tc.queueNew.Forget(key)
 		return
 	}
 
 	// This monitor retries 5 times if something goes wrong. After that, it stops trying.
-	if tc.queue.NumRequeues(key) < 5 {
+	if tc.queueNew.NumRequeues(key) < 5 {
 		log.Printf("Error syncing pod %v: %v", key, err)
 
 		// Re-enqueue the key rate limited. Based on the rate limiter on the
-		// queue and the re-enqueue history, the key will be processed later again.
-		tc.queue.AddRateLimited(key)
+		// queueNew and the re-enqueue history, the key will be processed later again.
+		tc.queueNew.AddRateLimited(key)
 		return
 	}
 
-	tc.queue.Forget(key)
+	tc.queueNew.Forget(key)
 	// Report to an external entity that, even after several retries, we could not successfully process this key
 	utilruntime.HandleError(err)
-	log.Printf("Dropping pod %q out of the queue: %v", key, err)
+	log.Printf("Dropping pod %q out of the queueNew: %v", key, err)
 }
 
 // Run executes the controller.
@@ -119,16 +126,18 @@ func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
 	defer utilruntime.HandleCrash()
 
 	// Let the workers stop when we are done
-	defer tc.queue.ShutDown()
+	defer tc.queueNew.ShutDown()
 	log.Printf("Starting Telegraf Pod Monitor")
 
 	go tc.informer.Run(stopCh)
 
-	// Wait for all involved caches to be synced, before processing items from the queue is started
+	// Wait for all involved caches to be synced, before processing items from the queueNew is started
 	if !cache.WaitForCacheSync(stopCh, tc.HasSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
 		return
 	}
+
+	tc.dealQueueRunning()
 
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(tc.runWorker, time.Second, stopCh)
@@ -138,7 +147,12 @@ func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
 	log.Print("Stopping Telegraf Pod Monitor")
 }
 
-func (tc *TelgrafController) runWorker() {
+func (tc *TelegrafController) dealQueueRunning() {
+	// TODO deal with queueRunning
+
+}
+
+func (tc *TelegrafController) runWorker() {
 	for tc.processNextItem() {
 	}
 }
@@ -167,10 +181,6 @@ func (tc *TelegrafController) Update(updatedConfig *types.ControllerConfig) erro
 		glog.Infof("Telegraf output:\n%v", string(out))
 	}
 	return err
-}
-
-func (tc *TelegrafController) OnAdd(pod *v1.pod) {
-	//TODO add a new pod to the map
 }
 
 // OnUpdate regenerate the configuration file of the backend

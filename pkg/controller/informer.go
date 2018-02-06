@@ -37,19 +37,28 @@ func (c *TelegrafController) createIndexerInformer() {
 						log.Printf("Ignore Add Event for Pod had been terminate: %s: %s", pod.Name, pod.Status.ContainerStatuses[0].State.Terminated.Reason)
 					} else {
 						if key, err := cache.MetaNamespaceKeyFunc(obj); err == nil {
-							log.Println("For Add Event, Adding to workqueue: ", pod.Name)
-							c.queue.Add(key)
+							if pod.Status.Phase == "Running" {
+								log.Println("Running pod, Adding to running workqueue: ", pod.Name)
+								c.queueRunning.Add(key)
+							} else if pod.Status.Phase == "Pending" {
+								log.Println("New pod, Adding to new workqueue: ", pod.Name)
+								c.queueNew.Add(key)
+							} else {
+								log.Printf("Pod %s is in %s status", pod.Name, pod.Status.Phase)
+							}
 						}
 					}
 				}
 			},
-			UpdateFunc: func(old interface{}, new interface{}) {
-				pod := new.(*v1.Pod)
-
-				if pod.Status.Phase != "Pending" {
-					if key, err := cache.MetaNamespaceKeyFunc(new); err == nil {
-						log.Println("For Update Event, Adding to workqueue: ", key)
-						c.queue.Add(key)
+			DeleteFunc: func(obj interface{}) {
+				pod := obj.(*v1.Pod)
+				if pod.Labels["telegraf"] == "true" {
+					// Delete corresponding pod in telegraf conf
+					if key, err := cache.MetaNamespaceKeyFunc(obj); err == nil {
+						if pod.Status.Phase == "Succeeded" || pod.Status.Phase == "Failed" {
+							log.Println("Pod exit event, Adding to new workqueue: ", pod.Name)
+							c.queueNew.Add(key)
+						}
 					}
 				}
 			},
