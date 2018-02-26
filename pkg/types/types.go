@@ -7,7 +7,7 @@ import (
 type (
 	// PodsConfig has pods with specified labels
 	// key: appGroup
-	PodsConfig struct {
+	ControllerConfig struct {
 		Pods map[string][]*v1.Pod
 	}
 )

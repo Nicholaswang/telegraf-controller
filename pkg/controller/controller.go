@@ -1,24 +1,25 @@
 package controller
 
 import (
-	"encoding/json"
+	//"encoding/json"
 	"fmt"
 	"github.com/Nicholaswang/telegraf-controller/pkg/types"
 	"github.com/Nicholaswang/telegraf-controller/pkg/utils"
-	"github.com/Nicholaswang/telegraf-controller/pkg/version"
+	//"github.com/Nicholaswang/telegraf-controller/pkg/version"
 	"github.com/golang/glog"
-	"github.com/spf13/pflag"
+	//"github.com/spf13/pflag"
 	"k8s.io/api/core/v1"
-	extensions "k8s.io/api/extensions/v1beta1"
-	"k8s.io/apimachinery/pkg/api/meta"
+	//extensions "k8s.io/api/extensions/v1beta1"
+	//"k8s.io/apimachinery/pkg/api/meta"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"net/http"
+	//"net/http"
+	"log"
 	"os/exec"
-	"strings"
+	"time"
 )
 
 type TelegrafController struct {
@@ -32,15 +33,16 @@ type TelegrafController struct {
 	queueNew       workqueue.RateLimitingInterface
 	informer       cache.Controller
 	clientset      kubernetes.Interface
+	Namespace      string
 }
 
 // NewTelegrafController constructor
-func NewTelegrafController() *TelegrafController {
+func NewTelegrafController(clientset kubernetes.Interface) *TelegrafController {
 	tc := &TelegrafController{
 		clientset:    clientset,
-		Config:       config,
 		queueRunning: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		queueNew:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		Namespace:    "default", // TODO
 	}
 
 	tc.createIndexerInformer()
@@ -75,7 +77,7 @@ func (tc *TelegrafController) HasSynced() bool {
 	return tc.informer.HasSynced()
 }
 
-// sync is the business logic of the monitor.
+// sync is the business logic of the controller.
 // The retry logic should not be part of the business logic.
 func (tc *TelegrafController) sync(key string) error {
 	pod, exists, err := tc.getPod(key)
@@ -93,9 +95,20 @@ func (tc *TelegrafController) sync(key string) error {
 }
 
 func (tc *TelegrafController) syncPod(pod *v1.Pod) error {
-	// TODO: deal with deleted pod
+	log.Println("Generate new tcConfig")
+	updatedConfig, _ := tc.generateConfig(pod)
+	err := tc.Update(updatedConfig)
+	if err != nil {
+		log.Printf("Error occured while Update config, err: %v", err)
+	}
 
 	return nil
+}
+
+func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConfig, error) {
+	updatedConfig := *tc.currentConfig
+	//TODO: reconfigure
+	return &updatedConfig, nil
 }
 
 // handleErr checks if an error happened and makes sure we will retry later.
@@ -147,9 +160,22 @@ func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
 	log.Print("Stopping Telegraf Pod Monitor")
 }
 
-func (tc *TelegrafController) dealQueueRunning() {
-	// TODO deal with queueRunning
+func (tc *TelegrafController) processRunningQueue() bool {
+	key, quit := tc.queueRunning.Get()
+	if quit {
+		return false
+	}
+	defer tc.queueNew.Done(key)
 
+	err := tc.sync(key.(string))
+	tc.handleErr(err, key)
+
+	return true
+}
+
+func (tc *TelegrafController) dealQueueRunning() {
+	for tc.processRunningQueue() {
+	}
 }
 
 func (tc *TelegrafController) runWorker() {
@@ -158,7 +184,7 @@ func (tc *TelegrafController) runWorker() {
 }
 
 func (tc *TelegrafController) Update(updatedConfig *types.ControllerConfig) error {
-	reloadRequired := reconfigureBackends(tc.currentConfig, updatedConfig)
+	reloadRequired := tc.reconfigureBackends(tc.currentConfig, updatedConfig)
 	tc.currentConfig = updatedConfig
 
 	data, err := tc.template.execute(updatedConfig)
@@ -183,15 +209,23 @@ func (tc *TelegrafController) Update(updatedConfig *types.ControllerConfig) erro
 	return err
 }
 
+func (tc *TelegrafController) reconfigureBackends(currentConfig *types.ControllerConfig, updatedConfig *types.ControllerConfig) bool {
+
+	return false
+}
+
 // OnUpdate regenerate the configuration file of the backend
-func (tc *TelegrafController) OnUpdate(pod *v1.pod) {
+/*
+func (tc *TelegrafController) OnUpdate(pod *v1.Pod) {
 	//TODO delete the pod in the map
 
 	//updatedConfig := newControllerConfig(tc)
-	Update(updatedConfig)
+	tc.Update(updatedConfig)
 }
+*/
 
 func (tc *TelegrafController) reloadTelegraf() ([]byte, error) {
+	*tc.reloadStrategy = "native"
 	out, err := exec.Command(tc.command, *tc.reloadStrategy, tc.configFile).CombinedOutput()
 	return out, err
 }

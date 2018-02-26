@@ -1,15 +1,38 @@
 package main
 
 import (
+	"flag"
 	"github.com/Nicholaswang/telegraf-controller/pkg/controller"
-	"github.com/golang/glog"
-	"os"
-	"os/signal"
-	"syscall"
+	//"github.com/golang/glog"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	//"os"
+	//"os/signal"
+	//"syscall"
+	"log"
+)
+
+var (
+	clientset *kubernetes.Clientset
 )
 
 func main() {
-	tc := controller.NewTelegrafController()
+	var (
+		apiserver  string
+		kubeconfig string
+	)
+	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
+	flag.StringVar(&apiserver, "apiserver", "", "api server host")
+
+	config, err := clientcmd.BuildConfigFromFlags(apiserver, kubeconfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatal(err)
+	}
+	tc := controller.NewTelegrafController(clientset)
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	go tc.Run(1, stopCh)
