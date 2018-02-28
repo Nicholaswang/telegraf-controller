@@ -67,7 +67,7 @@ func (tc *TelegrafController) processNextItem() bool {
 	}
 	defer tc.queueNew.Done(key)
 
-	err := tc.sync(key.(string))
+	err := tc.sync(key.(string), true)
 	tc.handleErr(err, key)
 	return true
 }
@@ -79,7 +79,7 @@ func (tc *TelegrafController) HasSynced() bool {
 
 // sync is the business logic of the controller.
 // The retry logic should not be part of the business logic.
-func (tc *TelegrafController) sync(key string) error {
+func (tc *TelegrafController) sync(key string, newPod bool) error {
 	pod, exists, err := tc.getPod(key)
 	if err != nil {
 		log.Printf("Fetching object with key %s from store failed with %v", key, err)
@@ -89,13 +89,17 @@ func (tc *TelegrafController) sync(key string) error {
 	if !exists {
 		fmt.Printf("Pod %s does not exist anymore\n", key)
 	} else if pod.Labels["telegraf"] == "true" {
-		return tc.syncPod(pod)
+		return tc.syncPod(pod, newPod)
 	}
 	return nil
 }
 
-func (tc *TelegrafController) syncPod(pod *v1.Pod) error {
+func (tc *TelegrafController) syncPod(pod *v1.Pod, newPod bool) error {
 	log.Println("Generate new tcConfig")
+	if newPod == false {
+		tc.addToCurrentConfig(pod)
+		return nil
+	}
 	updatedConfig, _ := tc.generateConfig(pod)
 	err := tc.Update(updatedConfig)
 	if err != nil {
@@ -105,9 +109,14 @@ func (tc *TelegrafController) syncPod(pod *v1.Pod) error {
 	return nil
 }
 
+func (tc *TelegrafController) addToCurrentConfig(pod *v1.Pod) {
+
+}
+
 func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConfig, error) {
 	updatedConfig := *tc.currentConfig
-	//TODO: reconfigure
+	//TODO: generate new config from current config and new pod
+
 	return &updatedConfig, nil
 }
 
@@ -142,6 +151,8 @@ func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
 	defer tc.queueNew.ShutDown()
 	log.Printf("Starting Telegraf Pod Monitor")
 
+	tc.dealQueueRunning()
+
 	go tc.informer.Run(stopCh)
 
 	// Wait for all involved caches to be synced, before processing items from the queueNew is started
@@ -149,8 +160,6 @@ func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
 		return
 	}
-
-	tc.dealQueueRunning()
 
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(tc.runWorker, time.Second, stopCh)
@@ -165,9 +174,10 @@ func (tc *TelegrafController) processRunningQueue() bool {
 	if quit {
 		return false
 	}
-	defer tc.queueNew.Done(key)
+	defer tc.queueRunning.Done(key)
 
-	err := tc.sync(key.(string))
+	//TODO; running pod ???
+	err := tc.sync(key.(string), false)
 	tc.handleErr(err, key)
 
 	return true
@@ -176,6 +186,8 @@ func (tc *TelegrafController) processRunningQueue() bool {
 func (tc *TelegrafController) dealQueueRunning() {
 	for tc.processRunningQueue() {
 	}
+
+	//TODO: configure running backends
 }
 
 func (tc *TelegrafController) runWorker() {

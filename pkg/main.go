@@ -24,6 +24,8 @@ func main() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	flag.StringVar(&apiserver, "apiserver", "", "api server host")
 
+	flag.Parse()
+
 	config, err := clientcmd.BuildConfigFromFlags(apiserver, kubeconfig)
 	if err != nil {
 		log.Fatal(err)
