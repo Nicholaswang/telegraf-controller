@@ -1,13 +1,12 @@
 package controller
 
 import (
-	//"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Nicholaswang/telegraf-controller/pkg/types"
 	"github.com/Nicholaswang/telegraf-controller/pkg/utils"
 	//"github.com/Nicholaswang/telegraf-controller/pkg/version"
 	"github.com/golang/glog"
-	//"github.com/spf13/pflag"
 	"k8s.io/api/core/v1"
 	//extensions "k8s.io/api/extensions/v1beta1"
 	//"k8s.io/apimachinery/pkg/api/meta"
@@ -16,7 +15,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	//"net/http"
 	"log"
 	"os/exec"
 	"time"
@@ -110,14 +108,71 @@ func (tc *TelegrafController) syncPod(pod *v1.Pod, newPod bool) error {
 }
 
 func (tc *TelegrafController) addToCurrentConfig(pod *v1.Pod) {
-
+	appGroup := pod.Labels["appGroup"]
+	if appGroup == "" {
+		return
+	}
+	for appName, podArr := range (*tc.currentConfig).Pods {
+		if appName == appGroup {
+			var tmp = make([]*v1.Pod, 0)
+			for _, po := range podArr {
+				//check pod status
+				if tc.isPodAlive(po) {
+					tmp = append(tmp, po)
+				} else {
+					//discarding obsolete pod
+					log.Printf("generateConfig: discarding obsolete pod: %s, namespace: %s", pod.Name, pod.ObjectMeta.Namespace)
+				}
+			}
+			if tc.isPodAlive(pod) {
+				tmp = append(tmp, pod)
+			}
+			(*tc.currentConfig).Pods[appName] = tmp
+		}
+	}
+	if tc.isPodAlive(pod) {
+		var tmp = []*v1.Pod{pod}
+		(*tc.currentConfig).Pods[appGroup] = tmp
+	}
 }
 
 func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConfig, error) {
 	updatedConfig := *tc.currentConfig
-	//TODO: generate new config from current config and new pod
+	appGroup := pod.Labels["appGroup"]
+	if appGroup == "" {
+		return nil, errors.New("pod without appGroup label")
+	}
+	for appName, podArr := range updatedConfig.Pods {
+		if appName == appGroup {
+			var tmp = make([]*v1.Pod, 0)
+			for _, po := range podArr {
+				//check pod status
+				if tc.isPodAlive(po) {
+					tmp = append(tmp, po)
+				} else {
+					//discarding obsolete pod
+					log.Printf("generateConfig: discarding obsolete pod: %s, namespace: %s", pod.Name, pod.ObjectMeta.Namespace)
+				}
+			}
+			if tc.isPodAlive(pod) {
+				tmp = append(tmp, pod)
+			}
+			updatedConfig.Pods[appName] = tmp
+			return &updatedConfig, nil
+		}
+	}
+	if tc.isPodAlive(pod) {
+		var tmp = []*v1.Pod{pod}
+		updatedConfig.Pods[appGroup] = tmp
+	}
 
 	return &updatedConfig, nil
+}
+
+func (tc *TelegrafController) isPodAlive(pod *v1.Pod) bool {
+	//TODO check pod is whether alive
+
+	return true
 }
 
 // handleErr checks if an error happened and makes sure we will retry later.
