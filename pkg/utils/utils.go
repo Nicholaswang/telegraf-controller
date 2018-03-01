@@ -75,7 +75,7 @@ func SendToSocket(socket string, command string) error {
 	return nil
 }
 
-// checkValidity runs a HAProxy configuration validity check on a file
+// checkValidity runs a configuration validity check on a file
 func checkValidity(configFile string) error {
 	return nil
 }
