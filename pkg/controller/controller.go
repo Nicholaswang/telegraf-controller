@@ -182,7 +182,12 @@ func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConf
 }
 
 func (tc *TelegrafController) isPodAlive(pod *v1.Pod) bool {
-	//TODO check pod is whether alive
+	phase := pod.Status.Phase
+	if phase == "RUNNING" || phase == "PENNDING" {
+		return true
+	} else {
+		return false
+	}
 
 	return true
 }
@@ -283,7 +288,6 @@ func (tc *TelegrafController) Update(updatedConfig *types.ControllerConfig) erro
 }
 
 func (tc *TelegrafController) reconfigureBackends(currentConfig *types.ControllerConfig, updatedConfig *types.ControllerConfig) error {
-	//TODO: transform controllerConfig.Pods to Backends for template
 	for appName, pods := range tc.currentConfig.Pods {
 		var backends = make([]*types.Backend, 0)
 		for _, pod := range pods {
