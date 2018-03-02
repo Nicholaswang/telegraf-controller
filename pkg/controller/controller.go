@@ -22,7 +22,7 @@ import (
 
 type TelegrafController struct {
 	command        string
-	reloadStrategy *string
+	reloadStrategy string
 	configFile     string
 	template       *template
 	currentConfig  *types.ControllerConfig
@@ -37,13 +37,20 @@ type TelegrafController struct {
 // NewTelegrafController constructor
 func NewTelegrafController(clientset kubernetes.Interface) *TelegrafController {
 	tc := &TelegrafController{
-		clientset:    clientset,
-		queueRunning: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		queueNew:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		Namespace:    "default", // TODO
+		clientset:      clientset,
+		queueRunning:   workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		queueNew:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		Namespace:      "default", // TODO
+		reloadStrategy: "native",  //TODO
+		currentConfig: &types.ControllerConfig{
+			Pods:     make(map[string][]*v1.Pod),
+			Backends: make(map[string][]*types.Backend),
+		},
 	}
 
 	tc.createIndexerInformer()
+	InitTemplate(tc)
+
 	return tc
 }
 
@@ -86,6 +93,10 @@ func (tc *TelegrafController) sync(key string, newPod bool) error {
 
 	if !exists {
 		log.Printf("Pod %s does not exist anymore\n", key)
+		// TODO: update currentConfig
+		if pod.Labels["telegraf"] == "true" {
+			return tc.syncPod(pod, newPod)
+		}
 	} else if pod.Labels["telegraf"] == "true" {
 		return tc.syncPod(pod, newPod)
 	}
@@ -99,13 +110,18 @@ func (tc *TelegrafController) syncPod(pod *v1.Pod, newPod bool) error {
 		return nil
 	}
 	updatedConfig, _ := tc.generateConfig(pod)
-	err := tc.reconfigureBackends(tc.currentConfig, updatedConfig)
+	err := tc.reconfigureBackends(updatedConfig)
+	if err != nil {
+		log.Printf("Error while reconfiguring backends, err: %v", err)
+		return err
+	}
+	log.Printf("tcconfig length: %d", len(tc.currentConfig.Backends))
 	reloadRequired := tc.currentConfig.Equal(updatedConfig)
 	if !reloadRequired {
 		log.Printf("No need for reload")
 		return nil
 	}
-	if err != nil {
+	if err == nil {
 		tc.currentConfig = updatedConfig
 		err := tc.Update(tc.currentConfig)
 		if err != nil {
@@ -125,6 +141,7 @@ func (tc *TelegrafController) addToCurrentConfig(pod *v1.Pod) {
 		return
 	}
 	for appName, podArr := range (*tc.currentConfig).Pods {
+		log.Printf("appName: %s", appName)
 		if appName == appGroup {
 			var tmp = make([]*v1.Pod, 0)
 			for _, po := range podArr {
@@ -183,7 +200,7 @@ func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConf
 
 func (tc *TelegrafController) isPodAlive(pod *v1.Pod) bool {
 	phase := pod.Status.Phase
-	if phase == "RUNNING" || phase == "PENNDING" {
+	if phase == "Running" || phase == "Pending" {
 		return true
 	} else {
 		return false
@@ -220,10 +237,12 @@ func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
 	defer utilruntime.HandleCrash()
 
 	// Let the workers stop when we are done
+	defer tc.queueRunning.ShutDown()
 	defer tc.queueNew.ShutDown()
 	log.Printf("Starting Telegraf Pod Monitor")
 
-	tc.dealQueueRunning()
+	//TODO bugfix for QueueRunning
+	//tc.dealQueueRunning()
 
 	go tc.informer.Run(stopCh)
 
@@ -275,7 +294,7 @@ func (tc *TelegrafController) Update(updatedConfig *types.ControllerConfig) erro
 		return err
 	}
 
-	err = utils.RewriteConfigFiles(data, *tc.reloadStrategy, tc.configFile)
+	err = utils.RewriteConfigFiles(data, tc.reloadStrategy, tc.configFile)
 	if err != nil {
 		return err
 	}
@@ -287,8 +306,9 @@ func (tc *TelegrafController) Update(updatedConfig *types.ControllerConfig) erro
 	return err
 }
 
-func (tc *TelegrafController) reconfigureBackends(currentConfig *types.ControllerConfig, updatedConfig *types.ControllerConfig) error {
-	for appName, pods := range tc.currentConfig.Pods {
+func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.ControllerConfig) error {
+	for appName, pods := range updatedConfig.Pods {
+		log.Printf("appName: %s", appName)
 		var backends = make([]*types.Backend, 0)
 		for _, pod := range pods {
 			var backend types.Backend
@@ -310,7 +330,6 @@ func (tc *TelegrafController) reconfigureBackends(currentConfig *types.Controlle
 }
 
 func (tc *TelegrafController) reloadTelegraf() ([]byte, error) {
-	*tc.reloadStrategy = "native"
-	out, err := exec.Command(tc.command, *tc.reloadStrategy, tc.configFile).CombinedOutput()
+	out, err := exec.Command(tc.command, tc.reloadStrategy, tc.configFile).CombinedOutput()
 	return out, err
 }

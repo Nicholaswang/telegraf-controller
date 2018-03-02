@@ -50,6 +50,19 @@ func newTemplate(name string, file string) *template {
 	}
 }
 
+func InitTemplate(tc *TelegrafController) {
+	if tc.reloadStrategy == "native" {
+		tc.configFile = "/etc/telegraf/telegraf.conf"
+		tc.template = newTemplate("telegraf.tmpl", "/etc/telegraf/template/telegraf.tmpl")
+	} else if tc.reloadStrategy == "multibinder" {
+		tc.configFile = "/etc/telegraf/telegraf.conf.erb"
+		tc.template = newTemplate("telegraf.conf.erb.tmpl", "/etc/telegraf/telegraf.conf.erb.tmpl")
+	} else {
+		glog.Fatalf("Unsupported reload strategy: %v", tc.reloadStrategy)
+	}
+	tc.command = "/etc/telegraf/telegraf-reload.sh"
+}
+
 func (t *template) execute(cfg *types.ControllerConfig) ([]byte, error) {
 	t.rawConfig.Reset()
 	t.fmtConfig.Reset()
