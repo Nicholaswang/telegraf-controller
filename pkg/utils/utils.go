@@ -84,6 +84,11 @@ func RewriteConfigFiles(data []byte, reloadStrategy, configFile string) error {
 		glog.Warningln("Error updating config file")
 		return err
 	}
+	err = os.Chmod(configFile, 0644)
+	if err != nil {
+		glog.Warningln("Error chmod config file")
+		return err
+	}
 
 	return nil
 }

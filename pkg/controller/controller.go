@@ -93,7 +93,6 @@ func (tc *TelegrafController) sync(key string, newPod bool) error {
 
 	if !exists {
 		log.Printf("Pod %s does not exist anymore\n", key)
-		// TODO: update currentConfig
 		if pod.Labels["telegraf"] == "true" {
 			return tc.syncPod(pod, newPod)
 		}
@@ -115,21 +114,17 @@ func (tc *TelegrafController) syncPod(pod *v1.Pod, newPod bool) error {
 		log.Printf("Error while reconfiguring backends, err: %v", err)
 		return err
 	}
-	log.Printf("tcconfig length: %d", len(tc.currentConfig.Backends))
+	log.Printf("Telegraf config backend length: %d", len(tc.currentConfig.Backends))
 	reloadRequired := tc.currentConfig.Equal(updatedConfig)
 	if !reloadRequired {
 		log.Printf("No need for reload")
 		return nil
 	}
-	if err == nil {
-		tc.currentConfig = updatedConfig
-		err := tc.Update(tc.currentConfig)
-		if err != nil {
-			log.Printf("Error occured while updating config, err: %v", err)
-		}
-	} else {
-		log.Printf("reconfigureBackends failed. err: %v", err)
-		return nil
+
+	tc.currentConfig = updatedConfig
+	err = tc.Update(tc.currentConfig)
+	if err != nil {
+		log.Printf("Error occured while updating config, err: %v", err)
 	}
 
 	return nil
@@ -330,6 +325,6 @@ func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.Controlle
 }
 
 func (tc *TelegrafController) reloadTelegraf() ([]byte, error) {
-	out, err := exec.Command(tc.command, tc.reloadStrategy, tc.configFile).CombinedOutput()
+	out, err := exec.Command(tc.command, tc.reloadStrategy).CombinedOutput()
 	return out, err
 }
