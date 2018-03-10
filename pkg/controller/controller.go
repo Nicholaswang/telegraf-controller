@@ -10,6 +10,8 @@ import (
 	"k8s.io/api/core/v1"
 	//extensions "k8s.io/api/extensions/v1beta1"
 	//"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -109,20 +111,22 @@ func (tc *TelegrafController) syncPod(pod *v1.Pod, newPod bool) error {
 		return nil
 	}
 	updatedConfig, _ := tc.generateConfig(pod)
-	err := tc.reconfigureBackends(updatedConfig)
-	if err != nil {
-		log.Printf("Error while reconfiguring backends, err: %v", err)
-		return err
-	}
+	/*
+		err := tc.reconfigureBackends(updatedConfig)
+		if err != nil {
+			log.Printf("Error while reconfiguring backends, err: %v", err)
+			return err
+		}
+	*/
 	log.Printf("Telegraf config backend length: %d", len(tc.currentConfig.Backends))
-	reloadRequired := tc.currentConfig.Equal(updatedConfig)
-	if !reloadRequired {
+	equal := tc.currentConfig.Equal(updatedConfig)
+	if equal {
 		log.Printf("No need for reload")
 		return nil
 	}
 
 	tc.currentConfig = updatedConfig
-	err = tc.Update(tc.currentConfig)
+	err := tc.Update(tc.currentConfig)
 	if err != nil {
 		log.Printf("Error occured while updating config, err: %v", err)
 	}
@@ -178,8 +182,12 @@ func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConf
 					log.Printf("generateConfig: discarding obsolete pod: %s, namespace: %s", pod.Name, pod.ObjectMeta.Namespace)
 				}
 			}
-			if tc.isPodAlive(pod) {
-				tmp = append(tmp, pod)
+			if tc.isPodExist(tmp, pod) {
+				log.Printf("Pod: %s exist", pod.Name)
+			} else {
+				if tc.isPodAlive(pod) {
+					tmp = append(tmp, pod)
+				}
 			}
 			updatedConfig.Pods[appName] = tmp
 			return &updatedConfig, nil
@@ -191,6 +199,16 @@ func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConf
 	}
 
 	return &updatedConfig, nil
+}
+
+func (tc *TelegrafController) isPodExist(pods []*v1.Pod, pod *v1.Pod) bool {
+	for _, po := range pods {
+		if po.Name == pod.Name && po.Status.PodIP == pod.Status.PodIP && po.Labels["monitorPort"] == pod.Labels["monitorPort"] {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (tc *TelegrafController) isPodAlive(pod *v1.Pod) bool {
@@ -237,7 +255,7 @@ func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
 	log.Printf("Starting Telegraf Pod Monitor")
 
 	//TODO bugfix for QueueRunning
-	//tc.dealQueueRunning()
+	tc.dealQueueRunning()
 
 	go tc.informer.Run(stopCh)
 
@@ -269,12 +287,27 @@ func (tc *TelegrafController) processRunningQueue() bool {
 }
 
 func (tc *TelegrafController) dealQueueRunning() {
-	for tc.processRunningQueue() {
+	log.Println("Start dealing queueRunning")
+	labelSelector := labels.Set{
+		"telegraf": "true",
 	}
-
-	err := tc.Update(tc.currentConfig)
+	var options metav1.ListOptions
+	options.LabelSelector = labelSelector.String()
+	pods, err := tc.clientset.CoreV1().Pods(v1.NamespaceAll).List(options)
 	if err != nil {
-		log.Printf("Error occured while updating config, err: %v", err)
+		glog.Errorf("Get current pods failed")
+	}
+	log.Printf("Pods length: %d", len(pods.Items))
+	for _, pod := range pods.Items {
+		tc.syncPod(&pod, false)
+	}
+	err = tc.reconfigureBackends(tc.currentConfig)
+	if err != nil {
+		glog.Errorf("Error while reconfiguring backends, err: %v", err)
+	}
+	err = tc.Update(tc.currentConfig)
+	if err != nil {
+		glog.Errorf("Error occured while updating config, err: %v", err)
 	}
 }
 
