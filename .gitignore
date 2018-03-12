@@ -1,1 +1,2 @@
-rootfs/telegraf-controller
+rootfs/etc/telegraf/telegraf-controller
+rootfs/etc/telegraf/telegraf
