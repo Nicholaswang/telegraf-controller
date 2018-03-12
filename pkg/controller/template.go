@@ -52,7 +52,7 @@ func newTemplate(name string, file string) *template {
 
 func InitTemplate(tc *TelegrafController) {
 	if tc.reloadStrategy == "native" {
-		tc.configFile = "/etc/telegraf/telegraf.d/telegraf.conf"
+		tc.configFile = "/etc/telegraf/telegraf.conf"
 		tc.template = newTemplate("telegraf.tmpl", "/etc/telegraf/template/telegraf.tmpl")
 	} else if tc.reloadStrategy == "multibinder" {
 		tc.configFile = "/etc/telegraf/telegraf.conf.erb"
