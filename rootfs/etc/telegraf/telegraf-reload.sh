@@ -13,7 +13,7 @@ case "$1" in
         done
         echo "test"
             
-        /etc/telegraf/telegraf -config /etc/telegraf/telegraf.conf -config-directory /etc/telegraf/telegraf.d
+        /etc/telegraf/telegraf -config /etc/telegraf/telegraf.conf 
         ;;
     *)
         echo "Unsupported reload strategy: $1"

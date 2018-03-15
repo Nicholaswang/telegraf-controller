@@ -1,9 +1,9 @@
 # Nicholas Wang
 
-FROM alpine:3.6 
+FROM harbor.aibyte.net/library/centos:7
 
-RUN apk --no-cache add ca-certificates tzdata openssl\
- && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime 
+#RUN apk --no-cache add ca-certificates tzdata openssl\
+# && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime 
 
 COPY ./etc/ /etc/
 

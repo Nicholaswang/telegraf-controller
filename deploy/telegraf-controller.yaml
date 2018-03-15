@@ -1,0 +1,20 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: telegraf-controller 
+  namespace: kube-system
+  labels:
+    app: telegraf-controller 
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: telegraf-controller 
+    spec:
+      containers:
+      - name: telegraf-controller 
+        image: "code01.aibyte.net:5050/aibyte/telegraf-controller:v0.1.0.3"
+        imagePullPolicy: IfNotPresent
+        command: ["/etc/telegraf/telegraf-controller"]
