@@ -15,6 +15,6 @@ spec:
     spec:
       containers:
       - name: telegraf-controller 
-        image: "code01.aibyte.net:5050/aibyte/telegraf-controller:v0.1.0.3"
+        image: "code01.aibyte.net:5050/aibyte/telegraf-controller:v0.1.0.5"
         imagePullPolicy: IfNotPresent
         command: ["/etc/telegraf/telegraf-controller"]

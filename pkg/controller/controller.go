@@ -2,7 +2,7 @@ package controller
 
 import (
 	"errors"
-	"fmt"
+	"github.com/Nicholaswang/cron"
 	"github.com/Nicholaswang/telegraf-controller/pkg/types"
 	"github.com/Nicholaswang/telegraf-controller/pkg/utils"
 	//"github.com/Nicholaswang/telegraf-controller/pkg/version"
@@ -13,13 +13,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
+	//"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"log"
 	"os/exec"
-	"time"
 )
 
 type TelegrafController struct {
@@ -87,30 +86,27 @@ func (tc *TelegrafController) HasSynced() bool {
 // sync is the business logic of the controller.
 // The retry logic should not be part of the business logic.
 func (tc *TelegrafController) sync(key string, newPod bool) error {
-	pod, exists, err := tc.getPod(key)
+	pod, _, err := tc.getPod(key)
 	if err != nil {
 		log.Printf("Fetching object with key %s from store failed with %v", key, err)
 		return err
 	}
-
-	if !exists {
-		log.Printf("Pod %s does not exist anymore\n", key)
-		if pod.Labels["telegraf"] == "true" {
-			return tc.syncPod(pod, newPod)
-		}
-	} else if pod.Labels["telegraf"] == "true" {
-		return tc.syncPod(pod, newPod)
-	}
-	return nil
-}
-
-func (tc *TelegrafController) syncPod(pod *v1.Pod, newPod bool) error {
-	log.Println("Generate new tcConfig")
-	if newPod == false {
-		tc.addToCurrentConfig(pod)
+	//TODO: reconfiu
+	if pod == nil {
+		log.Printf("Pod nil, ignore syncing")
 		return nil
 	}
-	updatedConfig, _ := tc.generateConfig(pod)
+
+	return tc.syncPod(pod)
+}
+
+func (tc *TelegrafController) syncPod(pod *v1.Pod) error {
+	log.Println("Generate new tcConfig")
+	updatedConfig, err := tc.generateConfig(pod)
+	if err != nil {
+		log.Printf("generateConfig failed %v", err)
+		return err
+	}
 	/*
 		err := tc.reconfigureBackends(updatedConfig)
 		if err != nil {
@@ -126,7 +122,7 @@ func (tc *TelegrafController) syncPod(pod *v1.Pod, newPod bool) error {
 	}
 
 	tc.currentConfig = updatedConfig
-	err := tc.Update(tc.currentConfig)
+	err = tc.Update(tc.currentConfig)
 	if err != nil {
 		log.Printf("Error occured while updating config, err: %v", err)
 	}
@@ -134,44 +130,23 @@ func (tc *TelegrafController) syncPod(pod *v1.Pod, newPod bool) error {
 	return nil
 }
 
-func (tc *TelegrafController) addToCurrentConfig(pod *v1.Pod) {
-	appGroup := pod.Labels["appGroup"]
-	if appGroup == "" {
+func (tc *TelegrafController) addToUpdatedConfig(updatedConfig *types.ControllerConfig, pod *v1.Pod) {
+	app := pod.Labels["app"]
+	if app == "" {
 		return
 	}
-	for appName, podArr := range (*tc.currentConfig).Pods {
-		log.Printf("appName: %s", appName)
-		if appName == appGroup {
-			var tmp = make([]*v1.Pod, 0)
-			for _, po := range podArr {
-				//check pod status
-				if tc.isPodAlive(po) {
-					tmp = append(tmp, po)
-				} else {
-					//discarding obsolete pod
-					log.Printf("generateConfig: discarding obsolete pod: %s, namespace: %s", pod.Name, pod.ObjectMeta.Namespace)
-				}
-			}
-			if tc.isPodAlive(pod) {
-				tmp = append(tmp, pod)
-			}
-			(*tc.currentConfig).Pods[appName] = tmp
-		}
-	}
-	if tc.isPodAlive(pod) {
-		var tmp = []*v1.Pod{pod}
-		(*tc.currentConfig).Pods[appGroup] = tmp
-	}
+	log.Printf("app: %s", app)
+	updatedConfig.Pods[app] = append(updatedConfig.Pods[app], pod)
 }
 
 func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConfig, error) {
 	updatedConfig := *tc.currentConfig
-	appGroup := pod.Labels["appGroup"]
-	if appGroup == "" {
-		return nil, errors.New("pod without appGroup label")
+	app := pod.Labels["app"]
+	if app == "" {
+		return nil, errors.New("pod without app label")
 	}
 	for appName, podArr := range updatedConfig.Pods {
-		if appName == appGroup {
+		if appName == app {
 			var tmp = make([]*v1.Pod, 0)
 			for _, po := range podArr {
 				//check pod status
@@ -195,7 +170,7 @@ func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConf
 	}
 	if tc.isPodAlive(pod) {
 		var tmp = []*v1.Pod{pod}
-		updatedConfig.Pods[appGroup] = tmp
+		updatedConfig.Pods[app] = tmp
 	}
 
 	return &updatedConfig, nil
@@ -246,31 +221,41 @@ func (tc *TelegrafController) handleErr(err error, key interface{}) {
 }
 
 // Run executes the controller.
-func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
+//func (tc *TelegrafController) Run(threadiness int, stopCh chan struct{}) {
+func (tc *TelegrafController) Run() {
 	defer utilruntime.HandleCrash()
 
 	// Let the workers stop when we are done
 	defer tc.queueRunning.ShutDown()
 	defer tc.queueNew.ShutDown()
 	log.Printf("Starting Telegraf Pod Monitor")
-
-	//TODO bugfix for QueueRunning
 	tc.dealQueueRunning()
 
-	go tc.informer.Run(stopCh)
+	cron_ := cron.New()
+	cron_.Start()
+	defer cron_.Stop()
+	cron_.AddFunc("@every 30s", tc.dealQueueRunning)
 
-	// Wait for all involved caches to be synced, before processing items from the queueNew is started
-	if !cache.WaitForCacheSync(stopCh, tc.HasSynced) {
-		utilruntime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
-		return
-	}
+	select {}
 
-	for i := 0; i < threadiness; i++ {
-		go wait.Until(tc.runWorker, time.Second, stopCh)
-	}
+	/*
+		tc.dealQueueRunning()
 
-	<-stopCh
-	log.Print("Stopping Telegraf Pod Monitor")
+		go tc.informer.Run(stopCh)
+
+		// Wait for all involved caches to be synced, before processing items from the queueNew is started
+		if !cache.WaitForCacheSync(stopCh, tc.HasSynced) {
+			utilruntime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
+			return
+		}
+
+		for i := 0; i < threadiness; i++ {
+			go wait.Until(tc.runWorker, time.Second, stopCh)
+		}
+
+		<-stopCh
+		log.Print("Stopping Telegraf Pod Monitor")
+	*/
 }
 
 func (tc *TelegrafController) processRunningQueue() bool {
@@ -296,18 +281,37 @@ func (tc *TelegrafController) dealQueueRunning() {
 	pods, err := tc.clientset.CoreV1().Pods(v1.NamespaceAll).List(options)
 	if err != nil {
 		glog.Errorf("Get current pods failed")
+		return
 	}
 	log.Printf("Pods length: %d", len(pods.Items))
-	for _, pod := range pods.Items {
-		tc.syncPod(&pod, false)
+	if len(pods.Items) == 0 {
+		return
 	}
-	err = tc.reconfigureBackends(tc.currentConfig)
+
+	updatedConfig := &types.ControllerConfig{
+		Pods:     make(map[string][]*v1.Pod),
+		Backends: make(map[string][]*types.Backend),
+	}
+	for _, pod := range pods.Items {
+		log.Printf("pod ip %s", pod.Status.PodIP)
+		tc.addToUpdatedConfig(updatedConfig, &pod)
+	}
+	err = tc.reconfigureBackends(updatedConfig)
 	if err != nil {
 		glog.Errorf("Error while reconfiguring backends, err: %v", err)
+		return
 	}
+	log.Printf("Telegraf config backend length: %d", len(updatedConfig.Backends))
+	equal := tc.currentConfig.Equal(updatedConfig)
+	if equal {
+		log.Printf("No need for reload")
+		return
+	}
+	tc.currentConfig = updatedConfig
 	err = tc.Update(tc.currentConfig)
 	if err != nil {
 		glog.Errorf("Error occured while updating config, err: %v", err)
+		return
 	}
 }
 
@@ -338,6 +342,7 @@ func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.Controlle
 	for appName, pods := range updatedConfig.Pods {
 		log.Printf("appName: %s", appName)
 		var backends = make([]*types.Backend, 0)
+		log.Printf("pods length: %d", len(pods))
 		for _, pod := range pods {
 			var backend types.Backend
 			var podName = pod.Name
@@ -348,10 +353,12 @@ func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.Controlle
 				continue
 			}
 			backend.IP = podIP
+			log.Printf("PODNAME: %s", podName)
+			log.Printf("IP: %s", podIP)
 			backend.Port = monitorPort
 			backends = append(backends, &backend)
 		}
-		tc.currentConfig.Backends[appName] = backends
+		updatedConfig.Backends[appName] = backends
 	}
 
 	return nil

@@ -39,9 +39,12 @@ func main() {
 		log.Fatal(err)
 	}
 	tc := controller.NewTelegrafController(clientset)
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	go tc.Run(1, stopCh)
+	/*
+		stopCh := make(chan struct{})
+		defer close(stopCh)
+		go tc.Run(1, stopCh)
+	*/
+	go tc.Run()
 
 	select {}
 }
