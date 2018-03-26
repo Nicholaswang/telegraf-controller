@@ -13,17 +13,14 @@ type (
 		Port string
 	}
 	ControllerConfig struct {
-		Pods     map[string][]*v1.Pod
-		Backends map[string][]*Backend
+		Pods     map[string][]v1.Pod
+		Backends map[string][]Backend
 	}
 )
 
-func (be1 *Backend) Equal(be2 *Backend) bool {
+func (be1 Backend) Equal(be2 Backend) bool {
 	if be1 == be2 {
 		return true
-	}
-	if be1 == nil || be2 == nil {
-		return false
 	}
 	if be1.IP != be2.IP || be1.Port != be2.Port {
 		return false
@@ -32,7 +29,7 @@ func (be1 *Backend) Equal(be2 *Backend) bool {
 	return true
 }
 
-func ArrEqual(bes1 []*Backend, bes2 []*Backend) bool {
+func ArrEqual(bes1 []Backend, bes2 []Backend) bool {
 	if len(bes1) != len(bes2) {
 		return false
 	}

@@ -44,8 +44,8 @@ func NewTelegrafController(clientset kubernetes.Interface) *TelegrafController {
 		Namespace:      "default", // TODO
 		reloadStrategy: "native",  //TODO
 		currentConfig: &types.ControllerConfig{
-			Pods:     make(map[string][]*v1.Pod),
-			Backends: make(map[string][]*types.Backend),
+			Pods:     make(map[string][]v1.Pod),
+			Backends: make(map[string][]types.Backend),
 		},
 	}
 
@@ -136,7 +136,7 @@ func (tc *TelegrafController) addToUpdatedConfig(updatedConfig *types.Controller
 		return
 	}
 	log.Printf("app: %s", app)
-	updatedConfig.Pods[app] = append(updatedConfig.Pods[app], pod)
+	updatedConfig.Pods[app] = append(updatedConfig.Pods[app], *pod)
 }
 
 func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConfig, error) {
@@ -147,10 +147,10 @@ func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConf
 	}
 	for appName, podArr := range updatedConfig.Pods {
 		if appName == app {
-			var tmp = make([]*v1.Pod, 0)
+			var tmp = make([]v1.Pod, 0)
 			for _, po := range podArr {
 				//check pod status
-				if tc.isPodAlive(po) {
+				if tc.isPodAlive(&po) {
 					tmp = append(tmp, po)
 				} else {
 					//discarding obsolete pod
@@ -161,7 +161,7 @@ func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConf
 				log.Printf("Pod: %s exist", pod.Name)
 			} else {
 				if tc.isPodAlive(pod) {
-					tmp = append(tmp, pod)
+					tmp = append(tmp, *pod)
 				}
 			}
 			updatedConfig.Pods[appName] = tmp
@@ -169,14 +169,14 @@ func (tc *TelegrafController) generateConfig(pod *v1.Pod) (*types.ControllerConf
 		}
 	}
 	if tc.isPodAlive(pod) {
-		var tmp = []*v1.Pod{pod}
+		var tmp = []v1.Pod{*pod}
 		updatedConfig.Pods[app] = tmp
 	}
 
 	return &updatedConfig, nil
 }
 
-func (tc *TelegrafController) isPodExist(pods []*v1.Pod, pod *v1.Pod) bool {
+func (tc *TelegrafController) isPodExist(pods []v1.Pod, pod *v1.Pod) bool {
 	for _, po := range pods {
 		if po.Name == pod.Name && po.Status.PodIP == pod.Status.PodIP && po.Labels["monitorPort"] == pod.Labels["monitorPort"] {
 			return true
@@ -289,8 +289,8 @@ func (tc *TelegrafController) dealQueueRunning() {
 	}
 
 	updatedConfig := &types.ControllerConfig{
-		Pods:     make(map[string][]*v1.Pod),
-		Backends: make(map[string][]*types.Backend),
+		Pods:     make(map[string][]v1.Pod),
+		Backends: make(map[string][]types.Backend),
 	}
 	for _, pod := range pods.Items {
 		log.Printf("pod ip %s", pod.Status.PodIP)
@@ -341,7 +341,7 @@ func (tc *TelegrafController) Update(updatedConfig *types.ControllerConfig) erro
 func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.ControllerConfig) error {
 	for appName, pods := range updatedConfig.Pods {
 		log.Printf("appName: %s", appName)
-		var backends = make([]*types.Backend, 0)
+		var backends = make([]types.Backend, 0)
 		log.Printf("pods length: %d", len(pods))
 		for _, pod := range pods {
 			var backend types.Backend
@@ -356,7 +356,7 @@ func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.Controlle
 			log.Printf("PODNAME: %s", podName)
 			log.Printf("IP: %s", podIP)
 			backend.Port = monitorPort
-			backends = append(backends, &backend)
+			backends = append(backends, backend)
 		}
 		updatedConfig.Backends[appName] = backends
 	}
