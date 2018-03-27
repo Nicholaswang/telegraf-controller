@@ -13,6 +13,7 @@ type (
 		Port string
 	}
 	ControllerConfig struct {
+		Influxdb string
 		Pods     map[string][]v1.Pod
 		Backends map[string][]Backend
 	}

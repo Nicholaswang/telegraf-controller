@@ -1,3 +1,4 @@
+{{ $cfg := .Backends }}
 [agent]
   interval = "30s"
   round_interval = true
@@ -18,7 +19,7 @@
   omit_hostname = false
 
 [[outputs.influxdb]]
-  urls = ["http://10.10.1.87:8086"] # required
+urls = ["{{ .Influxdb }}"] # required
   database = "telegraf" 
   retention_policy = ""
   write_consistency = "any"
@@ -27,11 +28,10 @@
   # username = "telegraf"
   # password = "metricsmetricsmetricsmetrics"
 
-{{ $cfg := .Backends }}
 {{ range $appGroup, $backends := $cfg }}
 {{ range $backend := $backends }}
 [[inputs.jolokia2_agent]]
-  name_prefix = "{{$appGroup}}"
+  name_prefix = "{{$appGroup}}-" 
   urls = ["http://{{$backend.IP}}:{{$backend.Port}}/jolokia"]
   [inputs.jolokia2_agent.tags]
     group = "{{$appGroup}}" 

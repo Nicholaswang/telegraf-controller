@@ -36,14 +36,15 @@ type TelegrafController struct {
 }
 
 // NewTelegrafController constructor
-func NewTelegrafController(clientset kubernetes.Interface) *TelegrafController {
+func NewTelegrafController(clientset kubernetes.Interface, influxdbUrl string) *TelegrafController {
 	tc := &TelegrafController{
 		clientset:      clientset,
 		queueRunning:   workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		queueNew:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		Namespace:      "default", // TODO
-		reloadStrategy: "native",  //TODO
+		Namespace:      "default",
+		reloadStrategy: "native",
 		currentConfig: &types.ControllerConfig{
+			Influxdb: influxdbUrl,
 			Pods:     make(map[string][]v1.Pod),
 			Backends: make(map[string][]types.Backend),
 		},
@@ -234,7 +235,7 @@ func (tc *TelegrafController) Run() {
 	cron_ := cron.New()
 	cron_.Start()
 	defer cron_.Stop()
-	cron_.AddFunc("@every 30s", tc.dealQueueRunning)
+	cron_.AddFunc("@every 60s", tc.dealQueueRunning)
 
 	select {}
 
@@ -289,6 +290,7 @@ func (tc *TelegrafController) dealQueueRunning() {
 	}
 
 	updatedConfig := &types.ControllerConfig{
+		Influxdb: tc.currentConfig.Influxdb,
 		Pods:     make(map[string][]v1.Pod),
 		Backends: make(map[string][]types.Backend),
 	}

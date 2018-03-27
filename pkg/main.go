@@ -24,9 +24,11 @@ func main() {
 	var (
 		apiserver  string
 		kubeconfig string
+		influxdb   string
 	)
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	flag.StringVar(&apiserver, "apiserver", "", "api server host")
+	flag.StringVar(&influxdb, "influxdb", "", "influxdb url")
 
 	flag.Parse()
 
@@ -38,7 +40,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	tc := controller.NewTelegrafController(clientset)
+	tc := controller.NewTelegrafController(clientset, influxdb)
 	/*
 		stopCh := make(chan struct{})
 		defer close(stopCh)
