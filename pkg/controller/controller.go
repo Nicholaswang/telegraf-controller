@@ -295,7 +295,6 @@ func (tc *TelegrafController) dealQueueRunning() {
 		Backends: make(map[string][]types.Backend),
 	}
 	for _, pod := range pods.Items {
-		log.Printf("pod ip %s", pod.Status.PodIP)
 		tc.addToUpdatedConfig(updatedConfig, &pod)
 	}
 	err = tc.reconfigureBackends(updatedConfig)
@@ -350,13 +349,15 @@ func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.Controlle
 			var podName = pod.Name
 			var podIP = pod.Status.PodIP
 			var monitorPort = pod.Labels["monitorPort"]
+			if podIP == "" {
+				log.Printf("Pod %s has no pod IP", podName)
+				continue
+			}
 			if monitorPort == "" {
 				log.Printf("Pod %s has no monitor port label", podName)
 				continue
 			}
 			backend.IP = podIP
-			log.Printf("PODNAME: %s", podName)
-			log.Printf("IP: %s", podIP)
 			backend.Port = monitorPort
 			backends = append(backends, backend)
 		}
