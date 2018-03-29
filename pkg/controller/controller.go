@@ -307,6 +307,8 @@ func (tc *TelegrafController) dealQueueRunning() {
 	if equal {
 		log.Printf("No need for reload")
 		return
+	} else {
+		log.Printf("Start reloading")
 	}
 	tc.currentConfig = updatedConfig
 	err = tc.Update(tc.currentConfig)
@@ -345,7 +347,9 @@ func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.Controlle
 		var backends = make([]types.Backend, 0)
 		log.Printf("pods length: %d", len(pods))
 		for _, pod := range pods {
-			var backend types.Backend
+			var backend = types.Backend{
+				Tag: make(map[string]string),
+			}
 			var podName = pod.Name
 			var podIP = pod.Status.PodIP
 			var monitorPort = pod.Labels["monitorPort"]
@@ -359,6 +363,21 @@ func (tc *TelegrafController) reconfigureBackends(updatedConfig *types.Controlle
 			}
 			backend.IP = podIP
 			backend.Port = monitorPort
+			backend.Prefix = pod.Labels["appPrefix"]
+			var product string
+			ns := pod.ObjectMeta.Namespace
+			if ns == "default" || ns == "kube-system" {
+				product = "common"
+			} else {
+				product = ns
+			}
+			backend.Tag["product"] = product
+			backend.Tag["module"] = appName
+			backend.Tag["podName"] = pod.ObjectMeta.Name
+			appGroup := pod.Labels["appGroup"]
+			if appGroup != "" {
+				backend.Tag["appGroup"] = appGroup
+			}
 			backends = append(backends, backend)
 		}
 		updatedConfig.Backends[appName] = backends

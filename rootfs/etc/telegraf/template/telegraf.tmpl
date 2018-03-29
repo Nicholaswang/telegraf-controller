@@ -31,10 +31,12 @@ urls = ["{{ .Influxdb }}"] # required
 {{ range $appGroup, $backends := $cfg }}
 {{ range $backend := $backends }}
 [[inputs.jolokia2_agent]]
-  name_prefix = "{{$appGroup}}-" 
+  name_prefix = "{{$backend.Prefix}}-" 
   urls = ["http://{{$backend.IP}}:{{$backend.Port}}/jolokia"]
   [inputs.jolokia2_agent.tags]
-    group = "{{$appGroup}}" 
+  {{ range $k, $v := $backend.Tag }}
+    {{ $k }} = "{{ $v }}" 
+  {{ end }}
   
   # java metric
   ## runtime

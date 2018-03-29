@@ -9,8 +9,10 @@ type (
 	// key: appGroup
 	Backend struct {
 		//PodInfo map[string]string // ip, port, or namespace etc.,
-		IP   string
-		Port string
+		IP     string
+		Port   string
+		Prefix string
+		Tag    map[string]string
 	}
 	ControllerConfig struct {
 		Influxdb string
@@ -20,10 +22,7 @@ type (
 )
 
 func (be1 Backend) Equal(be2 Backend) bool {
-	if be1 == be2 {
-		return true
-	}
-	if be1.IP != be2.IP || be1.Port != be2.Port {
+	if be1.IP != be2.IP || be1.Port != be2.Port || be1.Prefix != be2.Prefix {
 		return false
 	}
 
