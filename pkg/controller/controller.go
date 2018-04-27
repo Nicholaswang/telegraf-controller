@@ -21,10 +21,16 @@ import (
 	"os/exec"
 )
 
+type InitConfig struct {
+	Influxdb string
+	Interval string
+}
+
 type TelegrafController struct {
 	command        string
 	reloadStrategy string
 	configFile     string
+	Interval       string
 	template       *template
 	currentConfig  *types.ControllerConfig
 	indexer        cache.Indexer
@@ -36,15 +42,16 @@ type TelegrafController struct {
 }
 
 // NewTelegrafController constructor
-func NewTelegrafController(clientset kubernetes.Interface, influxdbUrl string) *TelegrafController {
+func NewTelegrafController(clientset kubernetes.Interface, initConfig InitConfig) *TelegrafController {
 	tc := &TelegrafController{
 		clientset:      clientset,
 		queueRunning:   workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		queueNew:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		Namespace:      "default",
 		reloadStrategy: "native",
+		Interval:       initConfig.Interval,
 		currentConfig: &types.ControllerConfig{
-			Influxdb: influxdbUrl,
+			Influxdb: initConfig.Influxdb,
 			Pods:     make(map[string][]v1.Pod),
 			Backends: make(map[string][]types.Backend),
 		},
@@ -235,7 +242,9 @@ func (tc *TelegrafController) Run() {
 	cron_ := cron.New()
 	cron_.Start()
 	defer cron_.Stop()
-	cron_.AddFunc("@every 60s", tc.dealQueueRunning)
+	interval := "@every " + tc.Interval
+	log.Printf("Telegraf running interval: %s", interval)
+	cron_.AddFunc(interval, tc.dealQueueRunning)
 
 	select {}
 

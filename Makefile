@@ -8,7 +8,7 @@ GOOS=linux
 GOARCH=amd64
 GIT_REPO=$(shell git config --get remote.origin.url)
 ROOT_PKG=github.com/Nicholaswang/telegraf-controller/pkg
-VERSION=v0.1.0.5
+VERSION=v0.1.7
 DOCKER_REGISTRY=harbor.aibyte.net/aibyte
 IMAGE_TAG=${VERSION}
 

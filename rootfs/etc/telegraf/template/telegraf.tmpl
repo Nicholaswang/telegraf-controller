@@ -1,12 +1,12 @@
 {{ $cfg := .Backends }}
 [agent]
-  interval = "30s"
+  interval = "60s"
   round_interval = true
   metric_buffer_limit = 10000
 
   collection_jitter = "0s"
 
-  flush_interval = "30s"
+  flush_interval = "60s"
   flush_jitter = "0s"
 
   precision = ""
@@ -31,7 +31,7 @@ urls = ["{{ .Influxdb }}"] # required
 {{ range $appGroup, $backends := $cfg }}
 {{ range $backend := $backends }}
 [[inputs.jolokia2_agent]]
-  name_prefix = "{{$backend.Prefix}}-" 
+  name_prefix = "{{$backend.Prefix}}_" 
   urls = ["http://{{$backend.IP}}:{{$backend.Port}}/jolokia"]
   [inputs.jolokia2_agent.tags]
   {{ range $k, $v := $backend.Tag }}

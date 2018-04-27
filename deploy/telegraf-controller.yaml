@@ -15,6 +15,7 @@ spec:
     spec:
       containers:
       - name: telegraf-controller 
-        image: "code01.aibyte.net:5050/aibyte/telegraf-controller:v0.1.0.5"
+        image: "code01.aibyte.net:5050/aibyte/telegraf-controller:v0.1.7"
         imagePullPolicy: IfNotPresent
         command: ["/etc/telegraf/telegraf-controller"]
+        args: ["--influxdb", "http://10.10.1.87:8086", "--interval", "60s"]
